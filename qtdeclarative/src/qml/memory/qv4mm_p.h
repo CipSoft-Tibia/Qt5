@@ -388,7 +388,18 @@ public:
 
     // called when a JS object grows itself. Specifically: Heap::String::append
     // and InternalClassDataPrivate<PropertyAttributes>.
-    void changeUnmanagedHeapSizeUsage(qptrdiff delta) { unmanagedHeapSize += delta; }
+    void changeUnmanagedHeapSizeUsage(qptrdiff delta) {
+        if (delta >= 0) {
+            unmanagedHeapSize += std::size_t(delta);
+        } else {
+            // Unsigned negation: well-defined, and safe even for the most
+            // negative qptrdiff, unlike -delta.
+            const std::size_t magnitude = std::size_t(0) - std::size_t(delta);
+            unmanagedHeapSize = (magnitude < unmanagedHeapSize)
+                    ? unmanagedHeapSize - magnitude
+                    : 0;
+        }
+    }
 
     // called at the end of a gc cycle
     void updateUnmanagedHeapSizeGCLimit();
